@@ -1,0 +1,157 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Refresh Priority Scoring: Predicting At-Risk Content from Search Performance Signals</title>
+<style>
+:root{
+  --bg:#f6f7fb; --card:#fff; --text:#172033; --muted:#5f6b7a;
+  --accent:#4f46e5; --accent2:#eef2ff; --border:#e5e7eb;
+}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--text);font-family:Inter,system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;line-height:1.7}
+.hero{background:linear-gradient(135deg,#111827,#312e81);color:#fff;padding:80px 24px}
+.hero-inner{max-width:1000px;margin:auto}
+.eyebrow{text-transform:uppercase;letter-spacing:.14em;font-size:.78rem;opacity:.8;font-weight:700}
+h1{font-size:clamp(2.2rem,5vw,4.2rem);line-height:1.08;margin:18px 0}
+.subtitle{font-size:1.15rem;max-width:780px;color:#dbeafe}
+.container{max-width:1000px;margin:0 auto;padding:40px 24px 80px}
+section{background:var(--card);border:1px solid var(--border);border-radius:18px;padding:32px;margin:24px 0;box-shadow:0 8px 30px rgba(15,23,42,.05)}
+h2{font-size:1.7rem;margin-top:0;border-bottom:1px solid var(--border);padding-bottom:12px}
+h3{font-size:1.15rem}
+.abstract{font-size:1.08rem}
+.callout{background:var(--accent2);border-left:4px solid var(--accent);padding:18px 20px;border-radius:10px;margin:20px 0}
+table{width:100%;border-collapse:collapse;margin:20px 0;font-size:.95rem}
+th,td{padding:13px 14px;border-bottom:1px solid var(--border);text-align:left}
+th{background:#f8fafc}
+.metric{font-weight:700}
+ul{padding-left:24px}
+code{background:#f1f5f9;padding:2px 6px;border-radius:5px}
+footer{max-width:1000px;margin:auto;padding:0 24px 60px;color:var(--muted)}
+a{color:var(--accent)}
+.warning{background:#fff7ed;border-left:4px solid #f97316;padding:16px 20px;border-radius:10px}
+.small{font-size:.9rem;color:var(--muted)}
+</style>
+</head>
+<body>
+<header class="hero">
+  <div class="hero-inner">
+    <div class="eyebrow">Search Intelligence Research</div>
+    <h1>Refresh Priority Scoring: Predicting At-Risk Content from Search Performance Signals</h1>
+    <p class="subtitle">A transparent, client-held-out machine-learning approach for prioritizing content review and refresh decisions.</p>
+  </div>
+</header>
+
+<main class="container">
+
+<section>
+<h2>Abstract</h2>
+<p class="abstract">
+Content teams managing large sites can't manually review every page to decide what needs refreshing, so this study asks: can search performance signals predict which pages are at risk of traffic decline well enough to prioritize a refresh queue? Using 90-day rolling windows of impressions, click, position, and query-diversity signals from the FlyRank search warehouse, I trained a Random Forest classifier to predict whether a page's impressions would decline more than 20% month-over-month, validating on entirely held-out clients to test whether the pattern generalizes rather than memorizes. The model reached 84.9% accuracy on unseen clients, only 1.5 points below its random-split accuracy, indicating the signal is genuinely transferable rather than client-specific. This substantially outperformed a rule-based baseline (46.5% accuracy) built from a comparable set of warehouse features. The result is a ranked, reason-coded refresh queue that gives content teams a defensible starting point for prioritization — not a guarantee of what will happen to any single page.
+</p>
+</section>
+
+<section>
+<h2>1. Introduction / Problem Statement</h2>
+<p>Large sites accumulate more content than any team can manually audit on a regular cadence. The practical question isn't "what's wrong with this page" for every page — it's <strong>which pages to look at first</strong>.</p>
+<p>This paper frames that as two linked decisions: (1) is this page currently at risk of a meaningful traffic decline, and (2) given that, what refresh action does it warrant. A model that can rank pages by risk, with an explanation attached, turns an unbounded manual review problem into a bounded weekly queue.</p>
+</section>
+
+<section>
+<h2>2. Data</h2>
+<p>This analysis uses the FlyRank Internship Warehouse release, accessed via the gated Hugging Face dataset, covering the date range available in the release. Features were built directly from <code>fact_content_daily</code> and <code>fact_content_query_90d</code> using DuckDB aggregation over the full approximately 79M-row release, rather than the pre-built lane sample.</p>
+<p>Content items with fewer than 150 impressions in the prior 90-day window were excluded to avoid scoring pages with too little history to produce a stable signal. No client names, domains, URLs, or raw query text are included in this paper or its outputs — all identifiers are anonymized hashes as provided by the release.</p>
+<div class="warning"><strong>Before submission:</strong> replace the date-range wording above with the exact bounds and client count from your executed data queries if your capstone contains those verified values. Do not invent them.</div>
+</section>
+
+<section>
+<h2>3. Methodology</h2>
+
+<h3>Label definition</h3>
+<p>A page is labeled <strong>declining</strong> if its impressions in the most recent 90-day window are more than 20% lower than the prior 90-day window. This is a relative, within-page comparison, not an absolute traffic threshold.</p>
+
+<h3>Features</h3>
+<p>All features are computed from the <em>prior</em> 90-day window only, strictly before the window used to compute the label, to prevent leakage: prior-window impression volume (<code>imp_prev90</code>), rare-query impression share, visible-query count, anonymized-impression share, top-query concentration share, and weekend click share.</p>
+
+<h3>Validation design</h3>
+<p>Two splits were compared: a standard random 75/25 split, and a <code>GroupShuffleSplit</code> on <code>client_hash_id</code> that holds out entire clients rather than individual pages. The group split is the more honest test of generalization, since a model that only works within clients it has already seen would be far less useful in production, where new clients have no training history.</p>
+
+<h3>Baseline</h3>
+<p>A rule-based score from an earlier assignment was reconstructed here using only warehouse-available features (prior impression volume and average position), thresholded at the bottom 35th percentile as "at risk" to roughly match the model's positive rate. This is a simplified version of the original rule — full CTR, engagement, and content-age signals from the original baseline were not available in this feature table, which is treated as a limitation rather than hidden.</p>
+</section>
+
+<section>
+<h2>4. Results</h2>
+<p>The Random Forest substantially outperformed the warehouse-feature rule baseline. Importantly, performance remained similar when entire clients were held out.</p>
+
+<table>
+<thead><tr><th>Model / split</th><th>Accuracy</th><th>Precision</th><th>Recall</th><th>F1</th></tr></thead>
+<tbody>
+<tr><td>Random Forest — random split</td><td class="metric">0.864</td><td>0.847</td><td>0.840</td><td>0.844</td></tr>
+<tr><td>Random Forest — group split (unseen clients)</td><td class="metric">0.849</td><td>0.842</td><td>0.847</td><td>0.845</td></tr>
+<tr><td>Rule baseline (warehouse features only)</td><td class="metric">0.465</td><td>0.429</td><td>0.310</td><td>0.360</td></tr>
+</tbody>
+</table>
+
+<div class="callout">
+<strong>Key result:</strong> the group-split accuracy was 84.9%, only 1.5 percentage points below the 86.4% random-split accuracy. This small gap is consistent with the model retaining useful signal across unseen clients.
+</div>
+
+<h3>Feature importance</h3>
+<table>
+<thead><tr><th>Feature</th><th>Importance</th></tr></thead>
+<tbody>
+<tr><td>Prior-window impression volume</td><td>0.344</td></tr>
+<tr><td>Rare-query share</td><td>0.175</td></tr>
+<tr><td>Visible-query count</td><td>0.161</td></tr>
+<tr><td>Anonymized-impression share</td><td>0.147</td></tr>
+<tr><td>Top-query concentration</td><td>0.105</td></tr>
+<tr><td>Weekend click share</td><td>0.068</td></tr>
+</tbody>
+</table>
+
+<p>Prior-window impression volume was the strongest feature, followed by query-diversity signals. Weekend click share was the weakest of the tested features, suggesting that traffic timing carries a smaller independent signal once volume and query-diversity features are accounted for.</p>
+</section>
+
+<section>
+<h2>5. Limitations &amp; Honest Framing</h2>
+<p>This model is <strong>decision-support, not ground truth</strong>.</p>
+<ul>
+<li>The label (impressions declining &gt;20%) is a proxy for "at risk," not a direct measure of business harm; some declines are seasonal or expected.</li>
+<li>The baseline comparison is not perfectly apples-to-apples with the original rule because CTR, engagement rate, and content age were unavailable in this feature table.</li>
+<li>Prior impression volume dominates feature importance, and it is also mechanically related to how the label itself is computed. This relationship deserves further scrutiny rather than being interpreted as a causal signal.</li>
+<li>Results are observed associations in this dataset and time window. They are not evidence of what refreshing any individual page will do to its traffic.</li>
+</ul>
+</section>
+
+<section>
+<h2>6. Ranked Recommendations</h2>
+<p>Pages flagged "declining" by the model, ranked by predicted probability, feed a queue with reason codes carried over from the earlier rule-based framework (<code>LOW_CTR</code>, <code>LOW_POSITION</code>, <code>STALE_CONTENT</code>) where available. When the model flags risk but the rule-based reason codes do not apply cleanly, the queue defaults to <code>Review</code>.</p>
+<ul>
+<li><strong>High-confidence decline + low query diversity:</strong> improve SEO coverage and broaden query targeting.</li>
+<li><strong>High-confidence decline + high rare-query share:</strong> review whether the content is too niche or thin and consider expanding useful coverage.</li>
+<li><strong>Borderline predictions:</strong> conduct manual review before taking action rather than automatically refreshing the page.</li>
+</ul>
+</section>
+
+<section>
+<h2>7. Reproducibility</h2>
+<p>The analysis notebooks and capstone are maintained in the project repository:</p>
+<p><a href="https://github.com/AyeshaRiaz66/FlyRank-ML-Internship" target="_blank" rel="noopener">GitHub repository — AyeshaRiaz66/FlyRank-ML-Internship</a></p>
+<p>The repository contains the <code>work/</code> notebooks and the capstone notebook. The deployed paper URL is recorded in <code>submission/paper_url.txt</code>.</p>
+</section>
+
+<section>
+<h2>8. Acknowledgments &amp; Data Credit</h2>
+<p>Built on the <strong>FlyRank ML Internship dataset</strong>.</p>
+<p><a href="https://flyrank.ai/" target="_blank" rel="noopener">FlyRank</a></p>
+</section>
+
+</main>
+
+<footer>
+<p>Research framing: observed, measured, directional, and decision-support only. This paper does not claim to predict or prove Google's ranking algorithm or the causal impact of refreshing individual pages.</p>
+</footer>
+</body>
+</html>
