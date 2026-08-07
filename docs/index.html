@@ -77,7 +77,6 @@ Content teams managing large sites can't manually review every page to decide wh
 <h2>2. Data</h2>
 <p>This analysis uses the FlyRank Internship Warehouse release, accessed via the gated Hugging Face dataset, covering the date range available in the release. Features were built directly from <code>fact_content_daily</code> and <code>fact_content_query_90d</code> using DuckDB aggregation over the full approximately 79M-row release, rather than the pre-built lane sample.</p>
 <p>Content items with fewer than 150 impressions in the prior 90-day window were excluded to avoid scoring pages with too little history to produce a stable signal. No client names, domains, URLs, or raw query text are included in this paper or its outputs — all identifiers are anonymized hashes as provided by the release.</p>
-<div class="warning"><strong>Before submission:</strong> replace the date-range wording above with the exact bounds and client count from your executed data queries if your capstone contains those verified values. Do not invent them.</div>
 </section>
 
 <section>
